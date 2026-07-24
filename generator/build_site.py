@@ -10,14 +10,28 @@
 使い方:
   python3 generator/build_site.py            # 直近30日分を生成
   python3 generator/build_site.py --days 60
+  python3 generator/build_site.py --push     # 生成 + git commit/push (launchd 日次用)
+                                             # 失敗時は DISCORD_WEBHOOK_AUTOMATION に通知
 """
 
 import argparse
 import html
 import json
+import os
 import re
+import subprocess
+import sys
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+# settings.local.json を env に補完（DISCORD_WEBHOOK_AUTOMATION 用）
+_SETTINGS = os.path.expanduser("~/.claude/settings.local.json")
+if os.path.exists(_SETTINGS):
+    with open(_SETTINGS, encoding="utf-8") as _f:
+        for _k, _v in json.load(_f).get("env", {}).items():
+            if _k not in os.environ:
+                os.environ[_k] = _v
 
 DRAFT_DIR = Path.home() / "Documents" / "treca"
 SITE_DIR = Path(__file__).resolve().parent.parent / "docs"
@@ -215,7 +229,47 @@ def build(days: int):
     print(f"built: index + {len(drafts)} daily pages -> {SITE_DIR}")
 
 
+def notify_automation(msg: str) -> None:
+    url = os.environ.get("DISCORD_WEBHOOK_AUTOMATION", "")
+    if not url:
+        return
+    try:
+        data = json.dumps({"content": msg}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("User-Agent", "DiscordBot (https://github.com, 1.0)")
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception:
+        pass
+
+
+def git_push():
+    """docs/ の変更を commit + push。変更が無ければ何もしない"""
+    repo = SITE_DIR.parent
+    run = lambda *a: subprocess.run(
+        ["git", *a], cwd=repo, check=True, capture_output=True, text=True)
+    run("add", "docs")
+    diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=repo)
+    if diff.returncode == 0:
+        print("no changes; skip push")
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    run("commit", "-m", f"chore: daily site update {today}")
+    run("push", "origin", "main")
+    print("pushed")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=30)
-    build(ap.parse_args().days)
+    ap.add_argument("--push", action="store_true",
+                    help="生成後に git commit + push（launchd 日次実行用）")
+    args = ap.parse_args()
+    try:
+        build(args.days)
+        if args.push:
+            git_push()
+    except Exception as e:
+        notify_automation(f"⚠️ treca-market-lp 日次更新失敗: {type(e).__name__}: {e}")
+        print(f"FAILED: {e}", file=sys.stderr)
+        sys.exit(1)
