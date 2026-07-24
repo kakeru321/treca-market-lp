@@ -46,6 +46,10 @@ CTA_BUY_URL = None   # 楽天市場 (もしも経由)
 
 PR_NOTICE = "本サイトはアフィリエイト広告（準備中を含む）を利用しています。"
 
+# アクセス解析スニペット。GoatCounter 等のアカウント作成後にタグを貼る
+# 例: '<script data-goatcounter="https://XXX.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>'
+ANALYTICS_HTML = ""
+
 CSS = """
 :root { --bg:#0f1218; --card:#1a1f2b; --text:#e8eaf0; --sub:#9aa3b5;
         --up:#ff5c5c; --down:#4da3ff; --accent:#f5c542; --line:#2a3040; }
@@ -157,6 +161,7 @@ def page(title: str, desc: str, body: str, path_depth: int = 0) -> str:
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(desc)}">
 <style>{CSS}</style>
+{ANALYTICS_HTML}
 </head>
 <body>
 <div class="pr">{PR_NOTICE}</div>
